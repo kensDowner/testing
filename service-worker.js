@@ -1,4 +1,4 @@
-const SW_VERSION = "kens-jobs-fcm-v1";
+const SW_VERSION = "kens-jobs-fcm-v1";  
 
 importScripts(
   "https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"
