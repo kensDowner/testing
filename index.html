@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
 
@@ -508,36 +509,105 @@
     }
 
 
-    async function copyNotificationDiagnostics() {
+    async function copyTextReliably(
+      text
+    ) {
+      if (
+        navigator.clipboard &&
+        window.isSecureContext
+      ) {
+        try {
+          await navigator.clipboard.writeText(
+            text
+          );
+          return true;
+        } catch (error) {
+          console.warn(
+            'Modern clipboard write failed:',
+            error
+          );
+        }
+      }
 
+      const textarea =
+        document.createElement(
+          'textarea'
+        );
+
+      textarea.value =
+        text;
+
+      textarea.setAttribute(
+        'readonly',
+        ''
+      );
+
+      textarea.style.position =
+        'fixed';
+
+      textarea.style.left =
+        '-9999px';
+
+      textarea.style.top =
+        '0';
+
+      document.body.appendChild(
+        textarea
+      );
+
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(
+        0,
+        textarea.value.length
+      );
+
+      let copied =
+        false;
+
+      try {
+        copied =
+          document.execCommand(
+            'copy'
+          );
+      } catch (error) {
+        console.warn(
+          'Legacy clipboard copy failed:',
+          error
+        );
+      }
+
+      textarea.remove();
+
+      return copied;
+    }
+
+
+    async function copyNotificationDiagnostics() {
       const text =
         getNotificationDiagnosticsText();
 
-      try {
-
-        await navigator.clipboard.writeText(
+      const copied =
+        await copyTextReliably(
           text
         );
 
-        addNotificationDiagnostic(
-          'DIAGNOSTICS_COPIED',
-          'Clipboard write succeeded'
-        );
+      addNotificationDiagnostic(
+        copied
+          ? 'DIAGNOSTICS_COPIED'
+          : 'DIAGNOSTICS_COPY_FAILED',
+        copied
+          ? 'Clipboard write succeeded'
+          : 'All clipboard methods failed'
+      );
 
-        setNotificationStatus(
-          'Diagnostics copied. Paste them into Copilot.'
-        );
+      setNotificationStatus(
+        copied
+          ? 'Diagnostics copied. Paste them into Copilot.'
+          : 'Copy was blocked. The text is selected below for manual copying.'
+      );
 
-      } catch (error) {
-
-        addNotificationDiagnostic(
-          'DIAGNOSTICS_COPY_FAILED',
-          error &&
-          error.message
-            ? error.message
-            : String(error)
-        );
-
+      if (!copied) {
         const output =
           document.getElementById(
             'notificationDiagnosticsOutput'
@@ -546,11 +616,22 @@
         if (output) {
           output.textContent =
             text;
-        }
 
-        setNotificationStatus(
-          'Copy was blocked. Open Show diagnostics and manually copy the text.'
-        );
+          const range =
+            document.createRange();
+
+          range.selectNodeContents(
+            output
+          );
+
+          const selection =
+            window.getSelection();
+
+          selection.removeAllRanges();
+          selection.addRange(
+            range
+          );
+        }
       }
     }
 
@@ -720,6 +801,32 @@
           String(
             message.type || ''
           ).trim();
+
+
+        if (
+          type ===
+          'THING_SEEN_DIAGNOSTIC'
+        ) {
+          const detail =
+            message.detail &&
+            typeof message.detail ===
+              'object'
+              ? message.detail
+              : {};
+
+          addNotificationDiagnostic(
+            'SEEN_' +
+            String(
+              message.stage ||
+              'UNKNOWN'
+            ),
+            JSON.stringify(
+              detail
+            )
+          );
+
+          return;
+        }
 
 
         // ----------------------------------------------------
@@ -1478,19 +1585,15 @@
     function updateNotificationBell(
       status
     ) {
-
       if (!pushBridgeWindow) {
         return;
       }
 
-
       let state =
         'ATTENTION';
 
-
       let identity =
         '';
-
 
       if (
         !(
@@ -1499,7 +1602,6 @@
         Notification.permission ===
           'denied'
       ) {
-
         state =
           'BLOCKED';
 
@@ -1512,10 +1614,8 @@
         Notification.permission ===
           'granted'
       ) {
-
         state =
           'ENABLED';
-
 
         identity =
           String(
@@ -1524,6 +1624,16 @@
           );
       }
 
+      const deviceId =
+        getPushDeviceId();
+
+      const deviceType =
+        status &&
+        status.deviceType
+          ? String(
+              status.deviceType
+            )
+          : '';
 
       pushBridgeWindow.postMessage(
         {
@@ -1534,9 +1644,35 @@
             state,
 
           identity:
-            identity
+            identity,
+
+          deviceType:
+            deviceType,
+
+          deviceId:
+            deviceId
         },
         '*'
+      );
+
+      addNotificationDiagnostic(
+        'DEVICE_CONTEXT_SENT',
+        'state=' +
+        state +
+        '; identity=' +
+        (
+          identity ||
+          '-'
+        ) +
+        '; deviceType=' +
+        (
+          deviceType ||
+          '-'
+        ) +
+        '; deviceIdPresent=' +
+        Boolean(
+          deviceId
+        )
       );
     }
 
