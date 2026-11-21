@@ -177,7 +177,7 @@
       }
       async function enableThingLocation(){
         const button=document.getElementById('enableLocationButton');button.disabled=true;
-        try{await requestOneCurrentPosition();locationEnabled=true;localStorage.setItem(LOCATION_ENABLED_KEY,'true');await renderLocationStatus('Location is enabled. Thing will request a fresh position only when you use a location feature.');await sendLocationStatusToApp('');}
+        try{await requestOneCurrentPosition();locationEnabled=true;localStorage.setItem(LOCATION_ENABLED_KEY,'true');await renderLocationStatus('Location is enabled. Thing will request a fresh position only when you use a location feature.');if(locationBridgeWindow)locationBridgeWindow.postMessage({type:'THING_LOCATION_STATUS_UPDATE',enabled:true,state:'ENABLED',permission:'granted',error:''},'*');}
         catch(error){locationEnabled=false;localStorage.removeItem(LOCATION_ENABLED_KEY);await renderLocationStatus(error.message);await sendLocationStatusToApp(error.message);}
         finally{button.disabled=false;}
       }
@@ -191,7 +191,7 @@
         if(type==='THING_LOCATION_POSITION_REQUEST'){
           const requestId=String(message.requestId||'');
           if(!locationEnabled){locationBridgeWindow.postMessage({type:'THING_LOCATION_POSITION_RESPONSE',requestId,error:'Location is disabled in Thing. Open Location settings and enable it first.'},'*');return;}
-          try{const position=await requestOneCurrentPosition();await sendLocationStatusToApp('');locationBridgeWindow.postMessage({type:'THING_LOCATION_POSITION_RESPONSE',requestId,result:{latitude:position.coords.latitude,longitude:position.coords.longitude,accuracy:position.coords.accuracy,timestamp:position.timestamp}},'*');}
+          try{const position=await requestOneCurrentPosition();locationBridgeWindow.postMessage({type:'THING_LOCATION_STATUS_UPDATE',enabled:true,state:'ENABLED',permission:'granted',error:''},'*');locationBridgeWindow.postMessage({type:'THING_LOCATION_POSITION_RESPONSE',requestId,result:{latitude:position.coords.latitude,longitude:position.coords.longitude,accuracy:position.coords.accuracy,timestamp:position.timestamp}},'*');}
           catch(error){await sendLocationStatusToApp(error.message);locationBridgeWindow.postMessage({type:'THING_LOCATION_POSITION_RESPONSE',requestId,error:error.message},'*');}
         }
       });
