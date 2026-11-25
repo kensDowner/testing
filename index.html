@@ -61,7 +61,7 @@
   <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-messaging-compat.js"></script>
   <script>
-    const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbwOT-GXLe39eeOBqSRO8IDMmdgeM0sL5C960HeClb5lPy5cS4Zk2a4xszOv1LbWUIGAhQ/exec';
+    const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzHnfFDdbPquro0uQzuzb5HLMc_BrK0HT5RVfrgRRVNAomhi2HC2GMWECKQamSxN3bvEw/exec';
     const FIREBASE_CONFIG={apiKey:'AIzaSyBK8rLM-6L3a1PycWKS4S6jeoNlV282SJg',authDomain:'kensington-work-orders.firebaseapp.com',projectId:'kensington-work-orders',storageBucket:'kensington-work-orders.firebasestorage.app',messagingSenderId:'707805815423',appId:'1:707805815423:web:59a8744b54ea34e5aa554a'};
     const VAPID_KEY='BDOFltKg2yHiYh5nhbysr2gwTgEzg69GcK5mtVtwFxq4BiltbykBAN9WwFk05f10cIduLAYE7VvEG--Zh1lluE4';
     let firebaseMessaging=null,serviceWorkerRegistration=null,pushRegistrationOptions=null,currentPushRegistrationStatus=null,notificationSetupOpenedManually=false,pushBridgeWindow=null,pushBridgeReady=false,resolvePushBridgeReady=null;
@@ -249,7 +249,7 @@
     function setNotificationStatus(message){document.getElementById('notificationStatus').textContent=message||''}
     function showNotificationSetup(){document.getElementById('notificationBackdrop').style.display='block';document.getElementById('notificationSetup').style.display='block'}
     function hideNotificationSetup(){document.getElementById('notificationSetup').style.display='none';document.getElementById('notificationBackdrop').style.display='none'}
-    function updateNotificationBell(status){if(!pushBridgeWindow)return;let state='ATTENTION',identity='';if(!('Notification'in window)||Notification.permission==='denied')state='BLOCKED';else if(status&&status.registered===true&&status.enabled===true&&Notification.permission==='granted'){state='ENABLED';identity=String(status.registeredIdentity||'')}pushBridgeWindow.postMessage({type:'PUSH_NOTIFICATION_STATUS_UPDATE',state,identity,deviceType:status&&status.deviceType?String(status.deviceType):'',deviceId:getPushDeviceId()},'*')}
+    function updateNotificationBell(status){if(!pushBridgeWindow)return;let state='ATTENTION',identity='';if(!('Notification'in window)||Notification.permission==='denied')state='BLOCKED';else if(status&&status.registered===true&&status.enabled===true&&Notification.permission==='granted'){state='ENABLED';identity=String(status.registeredIdentity||'')}pushBridgeWindow.postMessage({type:'PUSH_NOTIFICATION_STATUS_UPDATE',state,identity},'*')}
     function displayPushRegistrationStatus(status){currentPushRegistrationStatus=status||null;const disable=document.getElementById('disableNotificationsButton'),register=document.getElementById('enableNotificationsButton');updateNotificationBell(status);if(Notification.permission==='denied'){disable.style.display=status&&status.registered&&status.enabled?'block':'none';register.style.display='none';setNotificationStatus('Notifications are blocked in this browser. Use the browser site permissions to allow notifications, then reopen this panel.');if(!notificationSetupOpenedManually)hideNotificationSetup();return}register.style.display='block';if(status&&status.registered&&status.enabled){disable.style.display='block';register.textContent='Update Device Registration';setNotificationStatus('Notifications are enabled.\n\nRegistered as: '+String(status.registeredIdentity||'')+'\nType: '+String(status.deviceType||'')+'\nBrowser permission: '+String(Notification.permission||''))}else{disable.style.display='none';register.textContent='Enable Notifications & Register Device';if(status&&status.registered&&status.enabled===false)setNotificationStatus('Notifications are disabled for this browser. Select the person or vehicle and register again to enable them.');else if(Notification.permission==='granted')setNotificationStatus('Notification permission is already allowed. Select the person or vehicle to register this browser.');else setNotificationStatus('Register this browser to receive Work Order notifications.')}if(!notificationSetupOpenedManually)hideNotificationSetup()}
     async function loadPushRegistrationStatus(){const result=await sendPushBridgeRequest('PUSH_REGISTRATION_STATUS_REQUEST',{deviceId:getPushDeviceId()});if(!result||result.success!==true)throw new Error('Registration status could not be loaded.');displayPushRegistrationStatus(result);return result}
     function openNotificationSettings(){notificationSetupOpenedManually=true;showNotificationSetup();displayPushRegistrationStatus(currentPushRegistrationStatus)}
@@ -315,7 +315,36 @@
       loadWorkOrdersApp();
       prepareNotifications();
     });
-  </script>
+  
+    let thingWakeLock=null,thingTrackingActive=false;
+    async function sendThingWakeLockStatus(state,error){
+      const frame=document.getElementById('appFrame');
+      if(frame&&frame.contentWindow)frame.contentWindow.postMessage({type:'THING_WAKE_LOCK_STATUS',state:state,error:error||''},'*');
+    }
+    async function acquireThingWakeLock(){
+      if(!thingTrackingActive)return;
+      if(!('wakeLock'in navigator)){sendThingWakeLockStatus('UNSUPPORTED','Screen Wake Lock API is unavailable.');return;}
+      if(document.hidden){sendThingWakeLockStatus('PAUSED','Top-level Thing page is hidden.');return;}
+      try{
+        if(thingWakeLock&&!thingWakeLock.released){sendThingWakeLockStatus('ACTIVE','');return;}
+        thingWakeLock=await navigator.wakeLock.request('screen');
+        sendThingWakeLockStatus('ACTIVE','');
+        thingWakeLock.addEventListener('release',()=>{thingWakeLock=null;sendThingWakeLockStatus(document.hidden?'PAUSED':'RELEASED','Wake lock was released by the browser or device.');});
+      }catch(error){thingWakeLock=null;sendThingWakeLockStatus('FAILED',(error&&error.name?error.name+': ':'')+(error&&error.message?error.message:String(error||'Wake lock request failed.')));}
+    }
+    async function releaseThingWakeLock(){
+      const lock=thingWakeLock;thingWakeLock=null;
+      if(lock&&!lock.released){try{await lock.release();}catch(error){}}
+      sendThingWakeLockStatus('OFF','');
+    }
+    window.addEventListener('message',event=>{
+      const message=event.data&&typeof event.data==='object'?event.data:{};
+      if(event.source!==document.getElementById('appFrame').contentWindow)return;
+      if(message.type==='THING_TRACKING_STARTED'||message.type==='THING_TRACKING_RESUMED'){thingTrackingActive=true;acquireThingWakeLock();}
+      else if(message.type==='THING_TRACKING_STOPPED'){thingTrackingActive=false;releaseThingWakeLock();}
+      else if(message.type==='THING_WAKE_LOCK_REQUEST'){acquireThingWakeLock();}
+    });
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&thingTrackingActive)acquireThingWakeLock();});
+</script>
 </body>
 </html>
-
