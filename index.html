@@ -316,10 +316,10 @@
       prepareNotifications();
     });
   
-    let thingWakeLock=null,thingTrackingActive=false;
+    let thingWakeLock=null,thingTrackingActive=false,thingTrackerBridgeWindow=null;
     async function sendThingWakeLockStatus(state,error){
-      const frame=document.getElementById('appFrame');
-      if(frame&&frame.contentWindow)frame.contentWindow.postMessage({type:'THING_WAKE_LOCK_STATUS',state:state,error:error||''},'*');
+      const target=thingTrackerBridgeWindow;
+      if(target)target.postMessage({type:'THING_WAKE_LOCK_STATUS',state:state,error:error||''},'*');
     }
     async function acquireThingWakeLock(){
       if(!thingTrackingActive)return;
@@ -339,7 +339,8 @@
     }
     window.addEventListener('message',event=>{
       const message=event.data&&typeof event.data==='object'?event.data:{};
-      if(event.source!==document.getElementById('appFrame').contentWindow)return;
+      if(!['THING_TRACKING_STARTED','THING_TRACKING_RESUMED','THING_TRACKING_STOPPED','THING_WAKE_LOCK_REQUEST'].includes(message.type))return;
+      thingTrackerBridgeWindow=event.source;
       if(message.type==='THING_TRACKING_STARTED'||message.type==='THING_TRACKING_RESUMED'){thingTrackingActive=true;acquireThingWakeLock();}
       else if(message.type==='THING_TRACKING_STOPPED'){thingTrackingActive=false;releaseThingWakeLock();}
       else if(message.type==='THING_WAKE_LOCK_REQUEST'){acquireThingWakeLock();}
