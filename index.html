@@ -79,7 +79,25 @@
       homeUrl.hash = '';
       history.replaceState(null, '', homeUrl.toString());
       loadWorkOrdersApp();
+    })
+    const VEHICLE_FILTER_STORAGE_KEY = 'workOrdersPreferredVehicle';
+    window.addEventListener('message', event => {
+      const message = event.data && typeof event.data === 'object' ? event.data : {};
+      if (!['THING_VEHICLE_FILTER_GET','THING_VEHICLE_FILTER_SET'].includes(message.type)) return;
+      const senderOrigin = String(event.origin || '').toLowerCase();
+      const trustedAppsScriptSender =
+        senderOrigin === 'https://script.google.com' ||
+        senderOrigin.endsWith('.googleusercontent.com');
+      if (!trustedAppsScriptSender) return;
+      if (message.type === 'THING_VEHICLE_FILTER_SET') {
+        const vehicle = String(message.vehicle || 'ALL').trim() || 'ALL';
+        localStorage.setItem(VEHICLE_FILTER_STORAGE_KEY, vehicle);
+        return;
+      }
+      const vehicle = String(localStorage.getItem(VEHICLE_FILTER_STORAGE_KEY) || 'ALL').trim() || 'ALL';
+      event.source.postMessage({type:'THING_VEHICLE_FILTER_VALUE',vehicle}, '*');
     });
+;
     const pushBridgeReadyPromise=new Promise(resolve=>{resolvePushBridgeReady=resolve});
 
     const notificationDiagnosticsLog = [];
