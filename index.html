@@ -69,8 +69,11 @@
 
     window.addEventListener('message', event => {
       if (!event.data || event.data.type !== 'THING_NAVIGATE_HOME') return;
-      const appFrame = document.getElementById('appFrame');
-      if (!appFrame || event.source !== appFrame.contentWindow) return;
+      const senderOrigin = String(event.origin || '').toLowerCase();
+      const trustedAppsScriptSender =
+        senderOrigin === 'https://script.google.com' ||
+        senderOrigin.endsWith('.googleusercontent.com');
+      if (!trustedAppsScriptSender) return;
       const homeUrl = new URL(window.location.href);
       homeUrl.search = '';
       homeUrl.hash = '';
